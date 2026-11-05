@@ -155,12 +155,9 @@ async function start() {
       await bot.launch();
       return;
     } catch (err) {
-      if (err && err.response && err.response.error_code === 409) {
-        console.log('نسخة قديمة بعدها شغالة، أنتظر 5 ثواني...');
-        await new Promise((r) => setTimeout(r, 5000));
-        continue;
-      }
-      throw err;
+      const is409 = err && err.response && err.response.error_code === 409;
+      console.log(is409 ? 'نسخة قديمة بعدها شغالة' : 'خطأ بالاتصال: ' + (err && err.message), '- أعيد بعد 5 ثواني');
+      await new Promise((r) => setTimeout(r, 5000));
     }
   }
 }
