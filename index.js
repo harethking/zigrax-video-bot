@@ -117,7 +117,31 @@ require('http')
   .createServer((req, res) => res.end('ok'))
   .listen(process.env.PORT || 3000);
 
-bot.launch().then(() => console.log('البوت شغّال ✅'));
+async function start() {
+  for (;;) {
+    try {
+      console.log('البوت شغّال ✅');
+      await bot.launch();
+      return;
+    } catch (err) {
+      if (err && err.response && err.response.error_code === 409) {
+        console.log('نسخة قديمة بعدها شغالة، أنتظر 5 ثواني...');
+        await new Promise((r) => setTimeout(r, 5000));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+start().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+
+const stop = (sig) => {
+  try { bot.stop(sig); } catch (_) {}
+  process.exit(0);
+};
+process.once('SIGINT', () => stop('SIGINT'));
+process.once('SIGTERM', () => stop('SIGTERM'));
