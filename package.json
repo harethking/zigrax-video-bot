@@ -1,0 +1,12 @@
+{
+  "name": "video-dl-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot that downloads videos (with audio) from Instagram, TikTok and YouTube links",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3"
+  }
+}
