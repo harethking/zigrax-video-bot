@@ -45,14 +45,44 @@ function download(url, id) {
   });
 }
 
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function resolveUrl(url) {
+  try {
+    const r = await fetch(url, { redirect: 'follow', headers: { 'User-Agent': UA } });
+    return r.url.split('?')[0] || url;
+  } catch (_) {
+    return url;
+  }
+}
+
+async function tikwm(url) {
+  for (let i = 0; i < 4; i++) {
+    try {
+      const res = await fetch('https://www.tikwm.com/api/', {
+        method: 'POST',
+        headers: { 'User-Agent': UA, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ url, hd: '1' }),
+      });
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : null;
+      if (json && json.code === 0 && json.data) return json.data;
+      console.log('tikwm attempt', i + 1, json ? json.msg : 'empty response');
+    } catch (e) {
+      console.log('tikwm attempt', i + 1, e.message);
+    }
+    await sleep(1500 * (i + 1));
+  }
+  throw new Error('مصدر تيك توك مشغول، جرّب بعد دقيقة');
+}
+
 async function downloadTikTok(url, id) {
-  const api = 'https://www.tikwm.com/api/?hd=1&url=' + encodeURIComponent(url);
-  const res = await fetch(api, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-  const json = await res.json();
-  if (!json || json.code !== 0 || !json.data) throw new Error('ما گدرت أجيب فيديو تيك توك');
-  const videoUrl = json.data.hdplay || json.data.play;
+  const full = await resolveUrl(url);
+  const data = await tikwm(full);
+  const videoUrl = data.hdplay || data.play;
   if (!videoUrl) throw new Error('هذا المنشور ما بيه فيديو');
-  const vres = await fetch(videoUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  const vres = await fetch(videoUrl, { headers: { 'User-Agent': UA } });
   if (!vres.ok) throw new Error('فشل تنزيل فيديو تيك توك');
   const buf = Buffer.from(await vres.arrayBuffer());
   const file = path.join(TMP_DIR, `${id}.mp4`);
@@ -64,6 +94,7 @@ async function getVideo(url, id) {
   try {
     return await download(url, id);
   } catch (err) {
+    console.log('yt-dlp failed:', err.message);
     if (/tiktok\.com/i.test(url)) {
       cleanup(id);
       return await downloadTikTok(url, id);
