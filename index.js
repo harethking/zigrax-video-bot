@@ -25,6 +25,7 @@ function download(url, id) {
       '--merge-output-format', 'mp4',
       '-o', path.join(TMP_DIR, `${id}.%(ext)s`),
       '--no-warnings',
+      '--impersonate', 'chrome',
       url,
     ];
 
@@ -42,6 +43,33 @@ function download(url, id) {
       resolve(path.join(TMP_DIR, file));
     });
   });
+}
+
+async function downloadTikTok(url, id) {
+  const api = 'https://www.tikwm.com/api/?hd=1&url=' + encodeURIComponent(url);
+  const res = await fetch(api, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  const json = await res.json();
+  if (!json || json.code !== 0 || !json.data) throw new Error('ما گدرت أجيب فيديو تيك توك');
+  const videoUrl = json.data.hdplay || json.data.play;
+  if (!videoUrl) throw new Error('هذا المنشور ما بيه فيديو');
+  const vres = await fetch(videoUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  if (!vres.ok) throw new Error('فشل تنزيل فيديو تيك توك');
+  const buf = Buffer.from(await vres.arrayBuffer());
+  const file = path.join(TMP_DIR, `${id}.mp4`);
+  fs.writeFileSync(file, buf);
+  return file;
+}
+
+async function getVideo(url, id) {
+  try {
+    return await download(url, id);
+  } catch (err) {
+    if (/tiktok\.com/i.test(url)) {
+      cleanup(id);
+      return await downloadTikTok(url, id);
+    }
+    throw err;
+  }
 }
 
 function cleanup(id) {
@@ -69,7 +97,7 @@ bot.on('text', async (ctx) => {
   const wait = await ctx.reply('جاري التحميل... ⏳');
 
   try {
-    const file = await download(url, id);
+    const file = await getVideo(url, id);
     const size = fs.statSync(file).size;
     if (size > MAX_BYTES) throw new Error('الفيديو أكبر من 50 ميغابايت');
 
