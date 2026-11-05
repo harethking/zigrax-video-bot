@@ -148,6 +148,12 @@ require('http')
   .createServer((req, res) => res.end('ok'))
   .listen(process.env.PORT || 3000);
 
+if (process.env.RENDER_EXTERNAL_URL) {
+  setInterval(() => {
+    fetch(process.env.RENDER_EXTERNAL_URL).catch(() => {});
+  }, 10 * 60 * 1000);
+}
+
 async function start() {
   for (;;) {
     try {
