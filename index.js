@@ -15,6 +15,12 @@ const TMP_DIR = path.join(os.tmpdir(), 'video-dl-bot');
 fs.mkdirSync(TMP_DIR, { recursive: true });
 
 const ALLOWED = /^https?:\/\/(www\.|m\.|vm\.|vt\.)?(instagram\.com|tiktok\.com|youtube\.com|youtu\.be)\//i;
+const MAX_SECONDS = 600;
+const TOO_LONG = 'الفيديو طويل جداً لا يمكن تنزيله';
+
+class TooLongError extends Error {
+  constructor() { super(TOO_LONG); this.tooLong = true; }
+}
 
 function download(url, id) {
   return new Promise((resolve, reject) => {
@@ -26,11 +32,14 @@ function download(url, id) {
       '-o', path.join(TMP_DIR, `${id}.%(ext)s`),
       '--no-warnings',
       '--impersonate', 'chrome',
+      '--match-filter', `duration <=? ${MAX_SECONDS}`,
       url,
     ];
 
-    const p = spawn('yt-dlp', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const p = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
+    let stdout = '';
+    p.stdout.on('data', (d) => (stdout += d.toString()));
     p.stderr.on('data', (d) => (stderr += d.toString()));
     p.on('error', reject);
     p.on('close', (code) => {
@@ -38,6 +47,7 @@ function download(url, id) {
         const lines = stderr.split('\n').filter(Boolean);
         return reject(new Error(lines[lines.length - 1] || 'فشل التحميل'));
       }
+      if (/does not pass filter/i.test(stdout + stderr)) return reject(new TooLongError());
       const file = fs.readdirSync(TMP_DIR).find((f) => f.startsWith(id + '.'));
       if (!file) return reject(new Error('ما انلقى الملف'));
       resolve(path.join(TMP_DIR, file));
@@ -80,6 +90,7 @@ async function tikwm(url) {
 async function downloadTikTok(url, id) {
   const full = await resolveUrl(url);
   const data = await tikwm(full);
+  if (Number(data.duration) > MAX_SECONDS) throw new TooLongError();
   const videoUrl = data.hdplay || data.play;
   if (!videoUrl) throw new Error('هذا المنشور ما بيه فيديو');
   const vres = await fetch(videoUrl, { headers: { 'User-Agent': UA } });
@@ -95,6 +106,7 @@ async function getVideo(url, id) {
     return await download(url, id);
   } catch (err) {
     console.log('yt-dlp failed:', err.message);
+    if (err.tooLong) throw err;
     if (/tiktok\.com/i.test(url)) {
       cleanup(id);
       return await downloadTikTok(url, id);
@@ -136,7 +148,8 @@ bot.on('text', async (ctx) => {
     await ctx.deleteMessage(wait.message_id).catch(() => {});
   } catch (err) {
     await ctx.deleteMessage(wait.message_id).catch(() => {});
-    await ctx.reply('تعذر التحميل: ' + String(err.message).slice(0, 200));
+    if (err.tooLong) await ctx.reply('⛔ ' + TOO_LONG);
+    else await ctx.reply('تعذر التحميل: ' + String(err.message).slice(0, 200));
   } finally {
     cleanup(id);
   }
